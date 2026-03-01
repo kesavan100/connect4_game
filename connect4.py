@@ -1,6 +1,7 @@
 import streamlit as st
 import numpy as np
 import random
+import base64
 
 ROW_COUNT = 6
 COLUMN_COUNT = 7
@@ -8,6 +9,19 @@ PLAYER = 1
 AI = 2
 EMPTY = 0
 WINDOW_LENGTH = 4
+
+def play_sound(file):
+    with open(file, "rb") as f:
+        data = f.read()
+        b64 = base64.b64encode(data).decode()
+        md = f"""
+        <audio autoplay>
+        <source src="data:audio/wav;base64,{b64}" type="audio/wav">
+        </audio>
+        """
+        st.markdown(md, unsafe_allow_html=True)
+
+
 
 def create_board():
     return np.zeros((ROW_COUNT, COLUMN_COUNT), dtype=int)
@@ -24,28 +38,24 @@ def get_next_open_row(board, col):
             return r
 
 def winning_move(board, piece):
-    # Horizontal
     for c in range(COLUMN_COUNT - 3):
         for r in range(ROW_COUNT):
-            if all(board[r][c+i] == piece for i in range(WINDOW_LENGTH)):
+            if all(board[r][c+i] == piece for i in range(4)):
                 return True
 
-    # Vertical
     for c in range(COLUMN_COUNT):
         for r in range(ROW_COUNT - 3):
-            if all(board[r+i][c] == piece for i in range(WINDOW_LENGTH)):
+            if all(board[r+i][c] == piece for i in range(4)):
                 return True
 
-    # Positive diagonal
     for c in range(COLUMN_COUNT - 3):
         for r in range(ROW_COUNT - 3):
-            if all(board[r+i][c+i] == piece for i in range(WINDOW_LENGTH)):
+            if all(board[r+i][c+i] == piece for i in range(4)):
                 return True
 
-    # Negative diagonal
     for c in range(COLUMN_COUNT - 3):
         for r in range(3, ROW_COUNT):
-            if all(board[r-i][c+i] == piece for i in range(WINDOW_LENGTH)):
+            if all(board[r-i][c+i] == piece for i in range(4)):
                 return True
 
     return False
@@ -54,12 +64,12 @@ def winning_move(board, piece):
 def get_valid_locations(board):
     return [c for c in range(COLUMN_COUNT) if is_valid_location(board, c)]
 
-def is_terminal_node(board):
+def is_terminal(board):
     return winning_move(board, PLAYER) or winning_move(board, AI) or len(get_valid_locations(board)) == 0
 
 def minimax(board, depth, alpha, beta, maximizing):
-    valid_locations = get_valid_locations(board)
-    terminal = is_terminal_node(board)
+    valid = get_valid_locations(board)
+    terminal = is_terminal(board)
 
     if depth == 0 or terminal:
         if terminal:
@@ -69,21 +79,20 @@ def minimax(board, depth, alpha, beta, maximizing):
                 return None, -100000
             else:
                 return None, 0
-        else:
-            return None, 0
+        return None, 0
 
     if maximizing:
         value = -np.inf
-        column = random.choice(valid_locations)
+        column = random.choice(valid)
 
-        for col in valid_locations:
+        for col in valid:
             row = get_next_open_row(board, col)
             temp = board.copy()
             drop_piece(temp, row, col, AI)
-            new_score = minimax(temp, depth-1, alpha, beta, False)[1]
+            score = minimax(temp, depth-1, alpha, beta, False)[1]
 
-            if new_score > value:
-                value = new_score
+            if score > value:
+                value = score
                 column = col
 
             alpha = max(alpha, value)
@@ -94,16 +103,16 @@ def minimax(board, depth, alpha, beta, maximizing):
 
     else:
         value = np.inf
-        column = random.choice(valid_locations)
+        column = random.choice(valid)
 
-        for col in valid_locations:
+        for col in valid:
             row = get_next_open_row(board, col)
             temp = board.copy()
             drop_piece(temp, row, col, PLAYER)
-            new_score = minimax(temp, depth-1, alpha, beta, True)[1]
+            score = minimax(temp, depth-1, alpha, beta, True)[1]
 
-            if new_score < value:
-                value = new_score
+            if score < value:
+                value = score
                 column = col
 
             beta = min(beta, value)
@@ -113,96 +122,99 @@ def minimax(board, depth, alpha, beta, maximizing):
         return column, value
 
 
-st.set_page_config(page_title="Connect Four", layout="centered")
+st.set_page_config(layout="centered")
 
 if "board" not in st.session_state:
     st.session_state.board = create_board()
     st.session_state.turn = random.randint(PLAYER, AI)
     st.session_state.game_over = False
     st.session_state.message = ""
-    st.session_state.play_drop = False
-    st.session_state.play_win = False
 
-st.title("🔴🟡 Connect Four – Click Column to Drop. You Vs Ai")
+st.title("🔵 Connect Four")
 
-# ---------- DRAW BOARD ----------
+st.markdown("""
+<style>
+.board {
+    display: grid;
+    grid-template-columns: repeat(7, 70px);
+    gap: 10px;
+    background-color: #0057b7;
+    padding: 15px;
+    border-radius: 15px;
+}
+.cell {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background-color: white;
+}
+.red { background-color: #e63946; }
+.yellow { background-color: #ffbe0b; }
+.clickable {
+    cursor: pointer;
+}
+</style>
+""", unsafe_allow_html=True)
 
-def draw_board(board):
-    symbols = {0: "⚪", 1: "🔴", 2: "🟡"}
-
-    click_cols = st.columns(COLUMN_COUNT)
-    for c in range(COLUMN_COUNT):
-        if click_cols[c].button("⬇️", key=f"col{c}") and not st.session_state.game_over:
-            handle_player_move(c)
-
-    
-    for r in range(ROW_COUNT - 1, -1, -1):
-        cols = st.columns(COLUMN_COUNT)
-        for c in range(COLUMN_COUNT):
-            with cols[c]:
-                st.markdown(
-                    f"<div style='font-size:35px;text-align:center'>{symbols[board[r][c]]}</div>",
-                    unsafe_allow_html=True
-                )
-
-
-def handle_player_move(col):
-    if st.session_state.turn != PLAYER:
-        return
-
+def player_move(col):
     if is_valid_location(st.session_state.board, col):
         row = get_next_open_row(st.session_state.board, col)
         drop_piece(st.session_state.board, row, col, PLAYER)
-        st.session_state.play_drop = True
+        play_sound("drop_sound.wav")
 
         if winning_move(st.session_state.board, PLAYER):
             st.session_state.game_over = True
             st.session_state.message = "🎉 You Win!"
-            st.session_state.play_win = True
-        elif len(get_valid_locations(st.session_state.board)) == 0:
-            st.session_state.game_over = True
-            st.session_state.message = "🤝 It's a Tie!"
+            play_sound("win_sound.wav")
         else:
             st.session_state.turn = AI
 
 
-draw_board(st.session_state.board)
+board_html = '<div class="board">'
 
-# Play sounds AFTER rendering
-if st.session_state.play_drop:
-    st.audio("drop_sound.wav", autoplay=True)
-    st.session_state.play_drop = False
+for r in range(ROW_COUNT - 1, -1, -1):
+    for c in range(COLUMN_COUNT):
+        piece = st.session_state.board[r][c]
 
-if st.session_state.play_win:
-    st.audio("win_sound.wav", autoplay=True)
-    st.session_state.play_win = False
+        if piece == PLAYER:
+            board_html += '<div class="cell red"></div>'
+        elif piece == AI:
+            board_html += '<div class="cell yellow"></div>'
+        else:
+            board_html += f'<div class="cell clickable" onclick="window.location.href=\'?col={c}\'"></div>'
 
-# AI Turn
+board_html += "</div>"
+
+st.markdown(board_html, unsafe_allow_html=True)
+
+
+query_params = st.query_params
+if "col" in query_params and not st.session_state.game_over:
+    col = int(query_params["col"])
+    player_move(col)
+    st.query_params.clear()
+    st.rerun()
+
 if st.session_state.turn == AI and not st.session_state.game_over:
     col, _ = minimax(st.session_state.board, 4, -np.inf, np.inf, True)
 
     if col is not None:
         row = get_next_open_row(st.session_state.board, col)
         drop_piece(st.session_state.board, row, col, AI)
-        st.session_state.play_drop = True
+        play_sound("drop_sound.wav")
 
         if winning_move(st.session_state.board, AI):
             st.session_state.game_over = True
             st.session_state.message = "🤖 AI Wins!"
-            st.session_state.play_win = True
-        elif len(get_valid_locations(st.session_state.board)) == 0:
-            st.session_state.game_over = True
-            st.session_state.message = "🤝 It's a Tie!"
+            play_sound("win_sound.wav")
         else:
             st.session_state.turn = PLAYER
 
     st.rerun()
 
-# ---------- GAME OVER ----------
-
 if st.session_state.game_over:
     st.subheader(st.session_state.message)
-    if st.button("🔁 Play Again"):
+    if st.button("Play Again"):
         st.session_state.board = create_board()
         st.session_state.turn = random.randint(PLAYER, AI)
         st.session_state.game_over = False
