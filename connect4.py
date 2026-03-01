@@ -191,7 +191,7 @@ if st.session_state.turn == PLAYER:
                     st.session_state.message = "🤝 It's a Tie!"
                 else:
                     st.session_state.turn = AI
-            st.experimental_rerun()
+            st.rerun()
 
 # AI's turn
 elif st.session_state.turn == AI and not st.session_state.game_over:
@@ -207,4 +207,5 @@ elif st.session_state.turn == AI and not st.session_state.game_over:
             st.session_state.message = "🤝 It's a Tie!"
         else:
             st.session_state.turn = PLAYER
-    st.experimental_rerun()
+    st.rerun()
+
